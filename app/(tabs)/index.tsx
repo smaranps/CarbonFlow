@@ -1,98 +1,223 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Image } from "expo-image";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  Dimensions,
+  TouchableOpacity,
+  Alert,
+} from "react-native";
+import { BlurView } from "expo-blur";
+import { LineChart } from "react-native-chart-kit";
+import { useState, useEffect } from "react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export default function HomeScreen() {
+  const [countries, setCountries] = useState<string[]>([]);
+  const [likelihoods, setLikelihoods] = useState<number[]>([]);
+  const [years, setYears] = useState<number[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tooltip, setTooltip] = useState<any>(null);
+
+  const API_KEY = "AIzaSyBrk67tUu8xZvgr29jmU1UgRQ9WkVoabM0";
+  const genAI = new GoogleGenerativeAI(API_KEY);
+
+  const link =
+    "http://carbonflo.ddns.net:8000/climate_prediction_algo?country=all";
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch(link);
+        const data = await response.json();
+        const countryNames = Object.keys(data);
+        const likelihoodValues = countryNames.map((c) => data[c].likelihood);
+        const yearValues = countryNames.map((c) => data[c].year);
+
+        setCountries(countryNames);
+        setLikelihoods(likelihoodValues);
+        setYears(yearValues);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleDataPointClick = async (data: any) => {
+    const index = data.index;
+    const country = countries[index];
+    const likelihood = likelihoods[index];
+    const year = years[index];
+
+    // Show temporary tooltip
+    setTooltip({
+      country,
+      likelihood,
+      year,
+      insight: "Loading AI insight...",
+      x: data.x,
+      y: data.y,
+    });
+
+    try {
+      const response = await fetch(
+        `http://carbonflo.ddns.net:8000/gemini?text=Generate a short AI insight about why ${country} has a ${likelihood}% likelihood of meeting Paris Agreement goals by ${year}, under 260 characters.`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      // Fetch as raw text first (not JSON)
+      const text = await response.text();
+      let result;
+
+      try {
+        // Try parsing once
+        result = JSON.parse(text);
+
+        // If result is still a stringified JSON, parse again
+        if (typeof result === "string") {
+          result = JSON.parse(result);
+        }
+      } catch (err) {
+        console.error("Failed to parse AI insight:", err);
+        result = { insight: text }; // fallback if not JSON
+      }
+
+      setTooltip({
+        country,
+        likelihood,
+        year,
+        insight: result.insight || "No AI insight found.",
+        x: data.x,
+        y: data.y,
+      });
+    } catch (error) {
+      console.error("Error fetching AI insight:", error);
+      setTooltip({
+        country,
+        likelihood,
+        year,
+        insight: "Error getting AI insight.",
+        x: data.x,
+        y: data.y,
+      });
+    }
+  };
+
+  if (loading)
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#000" />
+        <Text>Loading Climate Data...</Text>
+      </View>
+    );
+
+  const chartWidth = Dimensions.get("window").width - 16;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
+    <ScrollView style={{ backgroundColor: "#F5F5DC" }}>
+      {/* Header */}
+      <BlurView style={{ margin: 1, height: 300 }} intensity={0} tint="dark">
         <Image
-          source={require('@/assets/images/partial-react-logo.png')}
+          source={require("@/assets/images/Logo.png")}
           style={styles.reactLogo}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+        <Text style={{ fontSize: 36, fontWeight: "bold", top: 150, margin: 2 }}>
+          CarbonFlo
+        </Text>
+        <Text style={{ fontSize: 16, fontWeight: "bold", top: 170 }}>
+          The World's Commitment Tracker
+        </Text>
+      </BlurView>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <View
+        style={{
+          backgroundColor: "#87CEEB",
+          paddingVertical: 10,
+          alignItems: "center",
+          height: 500,
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            fontWeight: "bold",
+            fontSize: 18,
+            marginBottom: 10,
+          }}
+        >
+          Climate Prediction Likelihoods
+        </Text>
+
+        <LineChart
+          data={{
+            labels: [
+              "                                                                               Click on a Dot to find out a detailed AI analysis!",
+            ],
+            datasets: [{ data: likelihoods.slice(0, 40) }],
+          }}
+          width={chartWidth}
+          height={260}
+          yAxisSuffix="%"
+          chartConfig={{
+            backgroundColor: "transparent",
+            backgroundGradientFrom: "#87CEEB",
+            backgroundGradientTo: "#87CEEB",
+            decimalPlaces: 0,
+            color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+            propsForDots: { r: "3", strokeWidth: "2", stroke: "#ffa726" },
+          }}
+          bezier
+          style={{ marginVertical: 8, borderRadius: 16 }}
+          onDataPointClick={(data) => handleDataPointClick(data)}
+        />
+
+        {tooltip && tooltip.country && (
+          <View
+            key={`${tooltip.country}-${tooltip.year}-${tooltip.insight}`}
+            style={{
+              marginTop: 12,
+              backgroundColor: "rgba(0,0,0,0.8)",
+              padding: 12,
+              borderRadius: 8,
+              width: "90%",
+              alignSelf: "center",
+            }}
+          >
+            <Text style={{ color: "white", fontWeight: "bold" }}>
+              {tooltip.country}
+            </Text>
+            <Text style={{ color: "white" }}>
+              Likelihood: {tooltip.likelihood}%
+            </Text>
+            <Text style={{ color: "white" }}>Year: {tooltip.year}</Text>
+            <Text style={{ color: "lightgreen", marginTop: 5 }}>
+              {tooltip.insight}
+            </Text>
+          </View>
+        )}
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
   reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+    height: 300,
+    width: 300,
+    left: 160,
+    top: 40,
+    position: "absolute",
   },
 });
